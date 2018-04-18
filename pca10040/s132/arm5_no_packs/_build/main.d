@@ -80,3 +80,6 @@
 .\_build\main.o: ..\..\..\..\..\..\components\drivers_nrf\hal\nrf_uart.h
 .\_build\main.o: ..\..\..\..\..\..\components\drivers_nrf\hal\nrf_uarte.h
 .\_build\main.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
+.\_build\main.o: ..\..\..\adxl.h
+.\_build\main.o: ..\..\..\fram.h
+.\_build\main.o: ..\..\..\adxl.h

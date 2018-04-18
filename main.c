@@ -25,6 +25,8 @@
 #include "nrf_drv_gpiote.h"
 #include "nrf_drv_uart.h"
 #include "math.h"
+#include "adxl.h"
+#include "fram.h"
 
 #define SPI_INSTANCE  2 /**< SPI instance index. */
 
@@ -77,11 +79,21 @@
 #define SEC_PARAM_MAX_KEY_SIZE           16                                         /**< Maximum encryption key size. */
 
 #define DEAD_BEEF                        0xDEADBEEF                                 /**< Value used as error code on stack dump,
- 																							can be used to identify stack location on stack unwind. */
+																																													can be used to identify stack location on stack unwind. */
+
+// cole 410 do we need this?
 #define ADXL1  0
 #define FRAM   1
 #define ADXL2  2
 #define SDCARD 3
+//410
+
+ret_code_t init_gpiote(void);
+uint8_t testADXL(void);
+void initSPI(void);
+void initADXLfor1600(void);
+void initFRAM1600(void);
+uint8_t* readFRAM(void);
 
 static dm_application_instance_t        m_app_handle;                               /**< Application identifier allocated by device manager */
 
@@ -101,8 +113,6 @@ int FRAMregister = 0;
 int FRAMreadRegister = 0;
 int registerAtStop = 0;
 uint8_t FRAMfull = 0;
-static const nrf_drv_spi_t spi = NRF_DRV_SPI_INSTANCE(SPI_INSTANCE);                 /**< SPI instance. */
-static const nrf_drv_spi_t spi2 = NRF_DRV_SPI_INSTANCE(SPI_INSTANCE);
 static volatile bool spi_xfer_done; 
 
 // spi read from adxl buffers
@@ -125,31 +135,11 @@ nrf_drv_gpiote_pin_t red_led = 19;
 nrf_drv_gpiote_pin_t boschIntEval = 6;
 nrf_drv_gpiote_pin_t boschInt = 3;
 nrf_drv_gpiote_pin_t ADXLint1 = 9;
-// spi configuration structure
-nrf_drv_spi_config_t spi_config = {
-	11, 					  	//sck
-	13, 						//mosi
-	12, 						//miso
-	NRF_DRV_SPI_PIN_NOT_USED, 	//slave select
-	APP_IRQ_PRIORITY_HIGH,		//app_button_disable interrupt priority with soft device
-	0xFF,
-	NRF_DRV_SPI_FREQ_4M,
-	NRF_DRV_SPI_MODE_0,
-	NRF_DRV_SPI_BIT_ORDER_MSB_FIRST, 
-};
-nrf_drv_spi_config_t spi_config2 = {
-	11, 					  	//sck
-	13, 						//mosi
-	12, 						//miso
-	NRF_DRV_SPI_PIN_NOT_USED, 	//slave select
-	APP_IRQ_PRIORITY_HIGH,		//app_button_disable interrupt priority with soft device
-	0xFF,
-	NRF_DRV_SPI_FREQ_4M,
-	NRF_DRV_SPI_MODE_3,
-	NRF_DRV_SPI_BIT_ORDER_MSB_FIRST, 
-};
 
 bool blockUpdate = false;
+
+// FRAM register variables 
+
 
 // service structure for our application
 ble_os_t m_our_service;
@@ -174,6 +164,7 @@ static ble_uuid_t       m_adv_uuids[] = {{BLE_UUID_OUR_SERVICE_UUID, BLE_UUID_TY
  * @param[in] line_num   Line number of the failing ASSERT call.
  * @param[in] file_name  File name of the failing ASSERT call.
  */
+//cole 410 what 
 void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
 {
     app_error_handler(DEAD_BEEF, line_num, p_file_name);
@@ -188,23 +179,19 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
 *												   wait for event
 *
 ****************************/
-void spi_event_handler(nrf_drv_spi_evt_t const * p_event)
+/*void spi_event_handler(nrf_drv_spi_evt_t const * p_event)
 {
 	spi_xfer_done = true;
 }
-/****************************
-*
-*  bosch i2c gyroscope read
-*
-****************************/
-uint8_t* readGyro(){
-	if(!blockUpdate){
+	*/
 
-	}	
-	return &buffRx[7];
-}	
+static void dumpData(void * p_context){
+
+	uint8_t* addy = readFRAM();
+	our_termperature_characteristic_update(&m_our_service, addy);
 
 	
+}
 
 /****************************
 *
@@ -218,38 +205,101 @@ uint8_t* readGyro(){
 *
 ****************************/
 static void timer_timeout_handler(void * p_context)
-{
-	if(!blockUpdate){
-		uint8_t* gyroData = readGyro();
-		our_termperature_characteristic_update(&m_our_service, gyroData);
+{	
+	/*uint8_t rxBuffer1[247];
+	uint8_t readFifo[1] = {0x85};
+	uint8_t* readFifoAddress = &readFifo[0];
+	
+	uint8_t* rxBufferAddress = &rxBuffer1[0];
+	nrf_drv_gpiote_out_clear(CS_ADXL1_PIN);
+	nrf_drv_spi_transfer(&spi, readFifoAddress, 1, rxBufferAddress, 247);
+	while (!spi_xfer_done)
+	{
+		__WFE();
 	}
-	uint8_t readStatus2[1] = {0x0B};
-	uint8_t* readStatus2Address = &readStatus2[0];
-	uint8_t rxBuffer[2];
-	uint8_t* rxBufferAddress = &rxBuffer[0]; 
-	nrf_drv_gpiote_out_clear(CS_ADXL1_PIN);
-	nrf_drv_spi_transfer(&spi, readStatus2Address, 2, rxBufferAddress, 2);
-	while (!spi_xfer_done)
-    {
-        __WFE();
-    }
 	nrf_drv_gpiote_out_set(CS_ADXL1_PIN);
 	spi_xfer_done = false;	
-	//SEGGER_RTT_printf(0,"ADXL status 1 register = %d\n", rxBuffer[1]);
-	/*
-	readStatus2[0] = 0x0B;
-	nrf_drv_gpiote_out_clear(CS_ADXL1_PIN);
-	nrf_drv_spi_transfer(&spi, readStatus2Address, 2, rxBufferAddress, 2);
-	while (!spi_xfer_done)
-    {
-        __WFE();
-    }
-	nrf_drv_gpiote_out_set(CS_ADXL1_PIN);
-	spi_xfer_done = false;	
-	SEGGER_RTT_printf(0,"ADXL status 2 register = %d\n", rxBuffer[1]);*/
+	*/
+	
+	
+	uint8_t* fifoReadAddress = readFIFO();
+	/*if(FramRegister > 261900){
+		FRAMFull = true;
+		nrf_drv_gpiote_out_clear(green_led);
+		nrf_drv_gpiote_out_set(red_led);
+	}
+
+	
+	if(!FRAMFull){
+		uint8_t readFRAMBuffer[4];
+		readFRAMBuffer[0] = 0x03;
+		readFRAMBuffer[1] = FramRegister >> 16;
+		readFRAMBuffer[2] = FramRegister >> 8;
+		readFRAMBuffer[3] = FramRegister;
+		
+		uint8_t dataBufferHalf[250];
+
+		dataBufferHalf[0] = 0x02;
+		dataBufferHalf[1] = FramRegister >> 16;
+		dataBufferHalf[2] = FramRegister >> 8;
+		dataBufferHalf[3] = FramRegister;
+		int j = 4;
+		for(int i = 1; i < 247; i++){
+			dataBufferHalf[j] = *(fifoReadAddress+i);
+			j++;
+		}
+		FramRegister += 246;
+		
+		SEGGER_RTT_printf(0, "data 1 = %d\n", dataBufferHalf[1]);
+		SEGGER_RTT_printf(0, "data 2 = %d\n", dataBufferHalf[2]);
+		SEGGER_RTT_printf(0, "data 3 = %d\n", dataBufferHalf[3]);
+		
+		uint8_t FRAMtx[1] = {0x06};  								//write enable
+		uint8_t* addrFRAMtx = &FRAMtx[0];
+		nrf_drv_gpiote_out_clear(CS_FRAM);
+		nrf_drv_spi_transfer(&spi, addrFRAMtx,1, NULL,0);
+		while (!spi_xfer_done)
+		{
+		   __WFE();
+		}
+		nrf_drv_gpiote_out_set(CS_FRAM);
+		spi_xfer_done = false;	
+		
+		uint8_t* dataBufferFirstHalfAddy = &dataBufferHalf[0];
+		nrf_drv_gpiote_out_clear(CS_FRAM);
+		nrf_drv_spi_transfer(&spi, dataBufferFirstHalfAddy, 250, NULL, 0);
+		while (!spi_xfer_done)
+		{
+			__WFE();
+		}
+		nrf_drv_gpiote_out_set(CS_FRAM);
+		spi_xfer_done = false;	
+		
+		//read back
+		uint8_t receiveBuffer[250];
+		uint8_t* readFRAMAddy = &readFRAMBuffer[0];
+		uint8_t* receiveBufferAddy = &receiveBuffer[0];
+		nrf_drv_gpiote_out_clear(CS_FRAM);
+		nrf_drv_spi_transfer(&spi, readFRAMAddy, 4, receiveBufferAddy, 250);
+		while (!spi_xfer_done)
+		{
+			__WFE();
+		}
+		nrf_drv_gpiote_out_set(CS_FRAM);
+		spi_xfer_done = false;	
+	
+		
+		
+	}*/
+	
+		
 }
 
+void singleShotTimer(){
+	// start char timer
+		app_timer_start(m_our_char_timer_id, OUR_CHAR_TIMER_INTERVAL, NULL);
 
+}
 /**@brief Function for the Timer initialization.
  *
  * @details Initializes the timer module. This creates and starts application timers.
@@ -378,7 +428,7 @@ static void sleep_mode_enter(void)
     APP_ERROR_CHECK(err_code);
 
     // Prepare wakeup buttons.
-    //err_code = bsp_btn_ble_sleep_mode_prepare();
+   // err_code = bsp_btn_ble_sleep_mode_prepare();
     APP_ERROR_CHECK(err_code);
 
     // Go to system-off mode (this function will not return; wakeup will cause a reset).
@@ -662,50 +712,7 @@ static void power_manage(void)
 
 /**@brief Function for application main entry.
  */
-void spiInit(int cs, uint8_t* txbuffer, uint8_t* rxbuffer, uint8_t* txbuffread){
-	nrf_drv_gpiote_out_clear(cs);
-	nrf_drv_spi_transfer(&spi, txbuffer , 2, NULL, 0);
-	while (!spi_xfer_done)
-    {
-        __WFE();
-    }
-	nrf_drv_gpiote_out_set(cs);
-	spi_xfer_done = false;
-	
-	nrf_drv_gpiote_out_clear(cs);
-	nrf_drv_spi_transfer(&spi, txbuffread , 2, rxbuffer, 2);
-	while (!spi_xfer_done)
-    {
-        __WFE();
-    }
-	nrf_drv_gpiote_out_set(cs);
-	spi_xfer_done = false;	
-}
 
-void spiWrite(int cs, uint8_t ADXLregister, uint8_t dataToWrite){
-	uint8_t txBuffer[2] = {ADXLregister << 1, dataToWrite};
-	uint8_t* txAddress = &txBuffer[0];	
-	nrf_drv_gpiote_out_clear(cs);
-	nrf_drv_spi_transfer(&spi, txAddress , 2, NULL, 0);
-	while (!spi_xfer_done)
-    {
-        __WFE();
-    }
-	nrf_drv_gpiote_out_set(cs);
-	spi_xfer_done = false;
-}
-void spiRead(int cs, uint8_t txbuff, uint8_t* rxbuffer){
-	uint8_t txbuffer[2] = {txbuff << 1 | 0x01, 0x00};
-	uint8_t* txAddress = &txbuffer[0];
-	nrf_drv_gpiote_out_clear(cs);
-	nrf_drv_spi_transfer(&spi, txAddress , 2, rxbuffer, 2);
-	while (!spi_xfer_done)
-    {
-        __WFE();
-    }
-	nrf_drv_gpiote_out_set(cs);
-	spi_xfer_done = false;
-}
 
 void initializePin(nrf_drv_gpiote_out_config_t pinConfig, nrf_drv_gpiote_pin_t pin, bool pinStatus){
 	ret_code_t err_code;
@@ -721,24 +728,6 @@ void initializePin(nrf_drv_gpiote_out_config_t pinConfig, nrf_drv_gpiote_pin_t p
 	}
 }
 
-void accInterruptTriggered(){
-	nrf_drv_gpiote_out_clear(yellow_led); //blue on 
-	uint8_t readStatus2[1] = {0x0B};
-	uint8_t* readStatus2Address = &readStatus2[0];
-	uint8_t rxBuffer[2];
-	uint8_t* rxBufferAddress = &rxBuffer[0]; 
-	nrf_drv_gpiote_out_clear(CS_ADXL1_PIN);
-	nrf_drv_spi_transfer(&spi, readStatus2Address, 2, rxBufferAddress, 2);
-	while (!spi_xfer_done)
-    {
-        __WFE();
-    }
-	nrf_drv_gpiote_out_set(CS_ADXL1_PIN);
-	spi_xfer_done = false;	
-	//SEGGER_RTT_printf(0,"ADXL status 2 register = %d\n", rxBuffer[1]);
-	SEGGER_RTT_WriteString(0, "ADXL interrupt\n");
-}
-
 int main(void)
 {   
 	/****************************
@@ -748,14 +737,7 @@ int main(void)
 	*
 	****************************/
 	
-	ret_code_t err_code;
-	if(!nrf_drv_gpiote_is_init())
-	{
-		err_code = nrf_drv_gpiote_init();
-	}
-	if (err_code == 8){
-		SEGGER_RTT_WriteString(0,"NRF_INVALID_STATE\n");
-	}
+	ret_code_t err_code = init_gpiote();
  
 	nrf_drv_gpiote_out_config_t outputGPIO = {
 		NRF_GPIOTE_POLARITY_LOTOHI,
@@ -789,8 +771,8 @@ int main(void)
 	*
 	****************************/
     
-	APP_ERROR_CHECK(nrf_drv_spi_init(&spi, &spi_config, spi_event_handler));
-	//APP_ERROR_CHECK(nrf_drv_spi_init(&spi2, &spi_config2, spi_event_handler));
+	initSPI();
+	//APP_ERROR_CHECK(nrf_drv_spi_init(&spi, &spi_config, spi_event_handler));
 	
 /*************************************************************************************************
 *
@@ -800,111 +782,17 @@ int main(void)
 **************************************************************************************************/
 	//init variables for spi init and reads
 	
-	uint8_t rxBuffer[2];
-	spiRead(CS_ADXL1_PIN, 0x00, &rxBuffer[0]);
-	SEGGER_RTT_printf(0, "dev id %d\n", rxBuffer[1]);
-	
-	uint8_t rxBuffer2[2];
-	spiRead(CS_ADXL2_PIN, 0x00, &rxBuffer2[0]);
-	SEGGER_RTT_printf(0, "ant dev id %d\n", rxBuffer2[1]);
-	
-	uint8_t threshold_act_x_h = 0x23;
-	spiWrite(CS_ADXL1_PIN, threshold_act_x_h, 0x03);
-	
-	uint8_t threshold_act_x_l = 0x24;
-	spiWrite(CS_ADXL1_PIN, threshold_act_x_l, 0x01);
-	
-	uint8_t threshold_act_y_h = 0x25;
-	spiWrite(CS_ADXL1_PIN, threshold_act_y_h, 0x03);
-	
-	uint8_t threshold_act_y_l = 0x26;
-	spiWrite(CS_ADXL1_PIN, threshold_act_y_l, 0x01);
-	
-	uint8_t threshold_act_z_h = 0x27;
-	spiWrite(CS_ADXL1_PIN, threshold_act_z_h, 0x03);
-	
-	uint8_t threshold_act_z_l = 0x28;
-	spiWrite(CS_ADXL1_PIN, threshold_act_z_l, 0x01);
-
-	uint8_t time_act = 0x29;
-	spiWrite(CS_ADXL1_PIN, time_act, 0x01);
-	
-	/*uint8_t fifo_samples = 0x39;
-	spiWrite(CS_ADXL1_PIN, fifo_samples, 0xFF);*/
-	
-	/*uint8_t fifo_ctl = 0x3A;
-	spiWrite(CS_ADXL1_PIN, fifo_ctl, 0x3);*/
-	
-	uint8_t int1_map = 0x3B;
-	spiWrite(CS_ADXL1_PIN, int1_map, 0x20);
-
-	uint8_t int2_map = 0x3C;
-	spiWrite(CS_ADXL1_PIN, int2_map, 0x20);
-
-	uint8_t timing = 0x3D;
-	spiWrite(CS_ADXL1_PIN, timing, 0x60);
-
-	uint8_t measure = 0x3E;
-	spiWrite(CS_ADXL1_PIN, measure, 0x0B);
-	
-	uint8_t power_ctl = 0x3F;
-	spiWrite(CS_ADXL1_PIN, power_ctl, 0x17);
-	
-	err_code = nrf_drv_gpiote_in_init(ADXLint1, &interrupt, accInterruptTriggered);
-	if(err_code != 0){
-		SEGGER_RTT_WriteString(0,"interrupt pin not initialized\n");
+	uint8_t adxlID = testADXL();
+	if(adxlID == 1){
+		SEGGER_RTT_WriteString(0, "!!!!!\n");
 	}
-	nrf_drv_gpiote_in_event_enable(ADXLint1, true);	
-		
-	uint8_t FRAMtx[1] = {0x06};  								//write enable
-	uint8_t* addrFRAMtx = &FRAMtx[0];
-	nrf_drv_gpiote_out_clear(CS_FRAM);
-	nrf_drv_spi_transfer(&spi, addrFRAMtx,1, NULL,0);
-	while (!spi_xfer_done)
-    {
-       __WFE();
-    }
-	nrf_drv_gpiote_out_set(CS_FRAM);
-	spi_xfer_done = false;
-	
-	uint8_t FRAMtx2[2] = {0x01,0x42};
-	uint8_t* addrFRAMtx2 = &FRAMtx2[0];
-	nrf_drv_gpiote_out_clear(CS_FRAM);
-	nrf_drv_spi_transfer(&spi,addrFRAMtx2,2,NULL,0);
-	while (!spi_xfer_done)
-    {
-       __WFE();
-    }
-	nrf_drv_gpiote_out_set(CS_FRAM);
-	spi_xfer_done = false;
-	
-	nrf_drv_gpiote_out_clear(CS_FRAM);						 //write enable again
-	nrf_drv_spi_transfer(&spi, addrFRAMtx,1, NULL,0);
-	while (!spi_xfer_done)
-    {
-       __WFE();
-    }
-	nrf_drv_gpiote_out_set(CS_FRAM);
-	spi_xfer_done = false;
-	
-	uint8_t FRAMtx3[2] = {0x05,0x00};
-	uint8_t* addrFRAMtx3 = &FRAMtx3[0];
-	uint8_t FRAMrx3[2];
-	uint8_t* addrFRAMrx3 = &FRAMrx3[0];
-	nrf_drv_gpiote_out_clear(CS_FRAM);					 //read status register
-	nrf_drv_spi_transfer(&spi, addrFRAMtx3,1,addrFRAMrx3,2);
-	while (!spi_xfer_done)
-    {
-       __WFE();
-    }
-	nrf_drv_gpiote_out_set(CS_FRAM);
-	spi_xfer_done = false;
-	
-	if (FRAMrx3[1] == 66){
-		SEGGER_RTT_WriteString(0,"FRAM initialized\n");
+	else if (adxlID == 0){
+		SEGGER_RTT_WriteString(0, "anterior board working!\n");
 	}
-
-
+	initADXLfor1600();
+	initFRAM1600();
+	
+	
     
 	bool erase_bonds;
 

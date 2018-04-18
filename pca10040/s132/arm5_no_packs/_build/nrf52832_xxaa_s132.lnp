@@ -1,6 +1,8 @@
 --cpu=Cortex-M4.fp
 ".\_build\main.o"
 ".\_build\our_service.o"
+".\_build\adxl.o"
+".\_build\fram.o"
 ".\_build\bsp.o"
 ".\_build\ble_advdata.o"
 ".\_build\ble_advertising.o"
