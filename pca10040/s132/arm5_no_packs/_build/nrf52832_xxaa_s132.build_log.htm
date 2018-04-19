@@ -21,30 +21,87 @@ Target DLL:      Segger\JL2CM3.dll V2.99.23.0
 Dialog DLL:      TCM.DLL V1.21.0.0
  
 <h2>Project:</h2>
-C:\Users\Cole\Desktop\work\nRF5_SDK_11.0.0_89a8197\examples\ble_peripheral\TXBDC_shockclock-shockclock_adxl\pca10040\s132\arm5_no_packs\nrf52-ble-tutorial-characteristic.uvprojx
-Project File Date:  04/09/2018
+C:\Users\Cole\Desktop\work\nRF5_SDK_11.0.0_89a8197\examples\ble_peripheral\seniorDesign17Nordic-master\pca10040\s132\arm5_no_packs\nrf52-ble-tutorial-characteristic.uvprojx
+Project File Date:  03/20/2018
 
 <h2>Output:</h2>
 *** Using Compiler 'V5.06 update 4 (build 422)', folder: 'C:\Keil_v5\ARM\ARMCC\Bin'
-Build target 'nrf52832_xxaa_s132'
+Rebuild target 'nrf52832_xxaa_s132'
+compiling bosch_BNO055.c...
+bosch_BNO055.h(10): warning:  #1-D: last line of file ends without a newline
+  uint8_t* readEuler();
+bosch_BNO055.h(10): warning:  #1295-D: Deprecated declaration readEuler - give arg types
+  uint8_t* readEuler();
+bosch_BNO055.c(152): warning:  #177-D: variable "fiveSeconds"  was declared but never referenced
+  	uint8_t fiveSeconds = 0x09;
+bosch_BNO055.c(153): warning:  #177-D: variable "tenSeconds"  was declared but never referenced
+  	uint8_t tenSeconds = 0x13;
+bosch_BNO055.c(154): warning:  #177-D: variable "fifteenSeconds"  was declared but never referenced
+  	uint8_t fifteenSeconds = 0x1C;
+bosch_BNO055.c(155): warning:  #177-D: variable "twentySeconds"  was declared but never referenced
+  	uint8_t twentySeconds = 0x21;
+bosch_BNO055.c(157): warning:  #177-D: variable "eightyEightSeconds"  was declared but never referenced
+  	uint8_t eightyEightSeconds = 0x41;
+bosch_BNO055.c(218): warning:  #1-D: last line of file ends without a newline
+  }
+bosch_BNO055.c: 8 warnings, 0 errors
+compiling our_service.c...
 compiling main.c...
-..\..\..\main.c(853): warning:  #167-D: argument of type "void (*)()" is incompatible with parameter of type "nrf_drv_gpiote_evt_handler_t"
-  	err_code = nrf_drv_gpiote_in_init(ADXLint1, &interrupt, accInterruptTriggered);
-..\..\..\main.c(105): warning:  #177-D: variable "spi2"  was declared but never referenced
-  static const nrf_drv_spi_t spi2 = NRF_DRV_SPI_INSTANCE(SPI_INSTANCE);
-..\..\..\main.c(119): warning:  #177-D: variable "ADXLdataBuffer"  was declared but never referenced
+..\..\..\main.c(133): warning:  #1295-D: Deprecated declaration initBosch - give arg types
+  void initBosch();
+..\..\..\main.c(134): warning:  #1295-D: Deprecated declaration readEuler - give arg types
+  uint8_t* readEuler();
+..\..\..\main.c(354): warning:  #223-D: function "bsp_btn_ble_sleep_mode_prepare" declared implicitly
+      err_code = bsp_btn_ble_sleep_mode_prepare();
+..\..\..\main.c(426): warning:  #223-D: function "bsp_btn_ble_on_ble_evt" declared implicitly
+      bsp_btn_ble_on_ble_evt(p_ble_evt);
+..\..\..\main.c(618): warning:  #223-D: function "bsp_btn_ble_init" declared implicitly
+      err_code = bsp_btn_ble_init(NULL, &startup_event);
+..\..\..\main.c(696): warning:  #167-D: argument of type "void (*)()" is incompatible with parameter of type "nrf_drv_gpiote_evt_handler_t"
+  	err_code = nrf_drv_gpiote_in_init(boschIntEval, &interrupt, int_fxn);
+..\..\..\main.c(108): warning:  #177-D: variable "ADXLdataBuffer"  was declared but never referenced
   static uint8_t ADXLdataBuffer[196] = {0};
-..\..\..\main.c(120): warning:  #177-D: variable "ADXLdataBuffer2"  was declared but never referenced
+..\..\..\main.c(109): warning:  #177-D: variable "ADXLdataBuffer2"  was declared but never referenced
   static uint8_t ADXLdataBuffer2[196] = {0};
-..\..\..\main.c(159): warning:  #177-D: variable "data_dump_id"  was declared but never referenced
+..\..\..\main.c(125): warning:  #177-D: variable "data_dump_id"  was declared but never referenced
   APP_TIMER_DEF(data_dump_id);
-..\..\..\main.c(636): warning:  #177-D: function "buttons_leds_init"  was declared but never referenced
+..\..\..\main.c(609): warning:  #177-D: function "buttons_leds_init"  was declared but never referenced
   static void buttons_leds_init(bool * p_erase_bonds)
-..\..\..\main.c: 6 warnings, 0 errors
+..\..\..\main.c: 10 warnings, 0 errors
+compiling bsp_btn_ble.c...
+compiling bsp.c...
+compiling ble_advdata.c...
+compiling ble_advertising.c...
+compiling ble_conn_params.c...
+compiling ble_srv_common.c...
+compiling nrf_delay.c...
+compiling app_uart.c...
+compiling device_manager_peripheral.c...
+compiling nrf_drv_common.c...
+compiling nrf_drv_uart.c...
+compiling nrf_drv_gpiote.c...
+compiling app_button.c...
+compiling nrf_drv_twi.c...
+compiling pstorage.c...
+compiling app_error_weak.c...
+compiling app_error.c...
+compiling app_trace.c...
+compiling app_timer.c...
+compiling app_util_platform.c...
+compiling nrf_assert.c...
+compiling fstorage.c...
+compiling sensorsim.c...
+compiling SEGGER_RTT.c...
+compiling SEGGER_RTT_printf.c...
+compiling retarget.c...
+assembling arm_startup_nrf52.s...
+compiling softdevice_handler.c...
+compiling msgs.c...
+compiling system_nrf52.c...
 linking...
-Program Size: Code=28312 RO-data=1484 RW-data=468 ZI-data=11588  
+Program Size: Code=29804 RO-data=1528 RW-data=460 ZI-data=11708  
 FromELF: creating hex file...
-".\_build\nrf52832_xxaa_s132.axf" - 0 Error(s), 6 Warning(s).
+".\_build\nrf52832_xxaa_s132.axf" - 0 Error(s), 18 Warning(s).
 
 <h2>Software Packages used:</h2>
 
@@ -61,7 +118,7 @@ Package Vendor: NordicSemiconductor
    * Component: Startup Version: 8.5.0
 
 <h2>Collection of Component include folders:</h2>
-  C:\Users\Cole\Desktop\work\nRF5_SDK_11.0.0_89a8197\examples\ble_peripheral\TXBDC_shockclock-shockclock_adxl\pca10040\s132\arm5_no_packs\RTE\_nrf52832_xxaa_s132
+  C:\Users\Cole\Desktop\work\nRF5_SDK_11.0.0_89a8197\examples\ble_peripheral\seniorDesign17Nordic-master\pca10040\s132\arm5_no_packs\RTE\_nrf52832_xxaa_s132
   C:\Keil_v5\ARM\PACK\ARM\CMSIS\4.5.0\CMSIS\Include
   C:\Keil_v5\ARM\PACK\NordicSemiconductor\nRF_DeviceFamilyPack\8.11.1\Device\Include
   C:\Keil_v5\ARM\PACK\NordicSemiconductor\nRF_DeviceFamilyPack\8.5.0\Device\Include
@@ -74,7 +131,7 @@ Package Vendor: NordicSemiconductor
       Source file:   Device\Source\system_nrf52.c
       Source file:   Device\Source\arm\arm_startup_nrf52.s
       Include file:  Device\Include\system_nrf52.h
-Build Time Elapsed:  00:00:02
+Build Time Elapsed:  00:00:13
 </pre>
 </body>
 </html>

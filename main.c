@@ -16,29 +16,22 @@
 #include "pstorage.h"
 #include "app_trace.h"
 #include "bsp.h"
-#include "bsp_btn_ble.h"
 #include "our_service.h"
-#include "nrf_drv_spi.h"
+#include "nrf_drv_twi.h"
 #include "app_util_platform.h"
 #include "nrf_delay.h"
 #include "SEGGER_RTT.h"
 #include "nrf_drv_gpiote.h"
-#include "nrf_drv_uart.h"
-#include "math.h"
 
-#define SPI_INSTANCE  2 /**< SPI instance index. */
 
-#define TWI_SCL_M                26   //!< Master SCL pin
-#define TWI_SDA_M                25   //!< Master SDA pin
 
-#define CS_ADXL2_PIN  6 /**< SPI CS Pin.*/
+#define CS_ADXL2_PIN  8 /**< SPI CS Pin.*/
 #define CS_ADXL1_PIN  17
 #define CS_ADXL1_PIN_EVAL 3
 #define CS_ADXL2_PIN_EVAL 8
 #define CS_FRAM       4
 #define CS_FRAM_EVAL  7
 
-#define MASTER_TWI_INST 0
 
 #define IS_SRVC_CHANGED_CHARACT_PRESENT  1                                          /**< Include or not the service_changed characteristic. 
 																							if not enabled, the server's database cannot be
@@ -53,7 +46,7 @@
 #define DEVICE_NAME                      "JohnCougarMellenc"
 #define APP_ADV_INTERVAL                 300                                        /**< The advertising interval 
 																							(in units of 0.625 ms. This value corresponds to 25 ms). */
-#define APP_ADV_TIMEOUT_IN_SECONDS       60                                        /**< The advertising timeout in units of seconds. */
+#define APP_ADV_TIMEOUT_IN_SECONDS       300                                        /**< The advertising timeout in units of seconds. */
 
 #define APP_TIMER_PRESCALER              0                                          /**< Value of the RTC1 PRESCALER register. */
 #define APP_TIMER_OP_QUEUE_SIZE          4                                          /**< Size of timer operation queues. */
@@ -101,15 +94,11 @@ int FRAMregister = 0;
 int FRAMreadRegister = 0;
 int registerAtStop = 0;
 uint8_t FRAMfull = 0;
-static const nrf_drv_spi_t spi = NRF_DRV_SPI_INSTANCE(SPI_INSTANCE);                 /**< SPI instance. */
-static const nrf_drv_spi_t spi2 = NRF_DRV_SPI_INSTANCE(SPI_INSTANCE);
 static volatile bool spi_xfer_done; 
 
 // spi read from adxl buffers
 uint8_t buffTx[1] = {0xF2}; // reading static values from the sensor NOT acc values
 uint8_t* addrBuffTx = &buffTx[0];
-uint8_t buffRx[30];
-uint8_t* addrBuffRx = &buffRx[0];
 uint8_t i = 0;
 uint8_t writeFlag = 0;
 double greatestVal = 0;
@@ -123,31 +112,8 @@ nrf_drv_gpiote_pin_t green_led = 15;
 nrf_drv_gpiote_pin_t yellow_led = 20;
 nrf_drv_gpiote_pin_t red_led = 19;
 nrf_drv_gpiote_pin_t boschIntEval = 6;
-nrf_drv_gpiote_pin_t boschInt = 3;
-nrf_drv_gpiote_pin_t ADXLint1 = 9;
-// spi configuration structure
-nrf_drv_spi_config_t spi_config = {
-	11, 					  	//sck
-	13, 						//mosi
-	12, 						//miso
-	NRF_DRV_SPI_PIN_NOT_USED, 	//slave select
-	APP_IRQ_PRIORITY_HIGH,		//app_button_disable interrupt priority with soft device
-	0xFF,
-	NRF_DRV_SPI_FREQ_4M,
-	NRF_DRV_SPI_MODE_0,
-	NRF_DRV_SPI_BIT_ORDER_MSB_FIRST, 
-};
-nrf_drv_spi_config_t spi_config2 = {
-	11, 					  	//sck
-	13, 						//mosi
-	12, 						//miso
-	NRF_DRV_SPI_PIN_NOT_USED, 	//slave select
-	APP_IRQ_PRIORITY_HIGH,		//app_button_disable interrupt priority with soft device
-	0xFF,
-	NRF_DRV_SPI_FREQ_4M,
-	NRF_DRV_SPI_MODE_3,
-	NRF_DRV_SPI_BIT_ORDER_MSB_FIRST, 
-};
+nrf_drv_gpiote_pin_t boschInt = 3;// spi configuration structure
+
 
 bool blockUpdate = false;
 
@@ -157,12 +123,15 @@ ble_os_t m_our_service;
 // app_timer id variable and timer interval
 APP_TIMER_DEF(m_our_char_timer_id);
 APP_TIMER_DEF(data_dump_id);
-#define OUR_CHAR_TIMER_INTERVAL     APP_TIMER_TICKS(1000, APP_TIMER_PRESCALER) /* 10 ms intervals, 
+#define OUR_CHAR_TIMER_INTERVAL     APP_TIMER_TICKS(10, APP_TIMER_PRESCALER) /* 10 ms intervals, 
 																			      2 packets per connection interval*/
 #define DATA_DUMP_TIMER_INTERVAL     APP_TIMER_TICKS(25, APP_TIMER_PRESCALER)
 
 static ble_uuid_t       m_adv_uuids[] = {{BLE_UUID_OUR_SERVICE_UUID, BLE_UUID_TYPE_VENDOR_BEGIN}}; 
-                                   
+ 
+bool init_i2c(void);
+void initBosch();
+uint8_t* readEuler();
 /**@brief Callback function for asserts in the SoftDevice.
  *
  * @details This function will be called in case of an assert in the SoftDevice.
@@ -188,24 +157,52 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
 *												   wait for event
 *
 ****************************/
-void spi_event_handler(nrf_drv_spi_evt_t const * p_event)
-{
-	spi_xfer_done = true;
-}
+
 /****************************
 *
 *  bosch i2c gyroscope read
 *
 ****************************/
 uint8_t* readGyro(){
+	uint8_t* dataPtr;
 	if(!blockUpdate){
-
+		dataPtr = readEuler();
 	}	
-	return &buffRx[7];
+	return dataPtr;
 }	
 
 	
+void int_fxn(){
 
+	/*uint8_t boschIntCheck[2];
+	boschIntCheck[0] = 0x37;
+	nrf_drv_twi_tx(&m_twi_master,BOSCH_ADDRESS,&boschIntCheck[0],1,false);
+	nrf_drv_twi_rx(&m_twi_master,BOSCH_ADDRESS,&boschIntCheck[1],1);
+	SEGGER_RTT_printf(0,"any or no motion = %d\n",boschIntCheck[1]);
+	uint8_t boschIntReset[2] = {0x3F,0x40};
+	nrf_drv_twi_tx(&m_twi_master, BOSCH_ADDRESS, &boschIntReset[0],2,false);	
+	if(boschIntCheck[1] >= 128){
+		blockUpdate = true;
+		nrf_drv_gpiote_out_set(15); //green off 
+		SEGGER_RTT_WriteString(0, "no motion\n");
+		boschIntCheck[0] = 0x3E;
+		boschIntCheck[1] = 0x01;
+		nrf_drv_twi_tx(&m_twi_master, BOSCH_ADDRESS, &boschIntCheck[0],2,false);
+		SEGGER_RTT_printf(0,"should be 01 %d\n",boschIntCheck[1]);
+	}
+	else if(boschIntCheck[1] >= 64 && boschIntCheck[1] < 128){
+		blockUpdate = false;
+		nrf_drv_gpiote_out_clear(15); //green on
+		SEGGER_RTT_WriteString(0,"any motion\n");
+		boschIntCheck[0] = 0x3E;
+		boschIntCheck[1] = 0x00;
+		nrf_drv_twi_tx(&m_twi_master, BOSCH_ADDRESS, &boschIntCheck[0],2,false);
+		nrf_drv_twi_tx(&m_twi_master, BOSCH_ADDRESS, &boschIntCheck[0],1,false);
+		nrf_drv_twi_rx(&m_twi_master, BOSCH_ADDRESS, &boschIntCheck[0],1);
+		SEGGER_RTT_printf(0,"should be 00 %d\n",boschIntCheck[0]);
+		ble_advertising_start(BLE_ADV_MODE_FAST);
+	}*/
+}
 /****************************
 *
 *   timeout event   
@@ -223,30 +220,6 @@ static void timer_timeout_handler(void * p_context)
 		uint8_t* gyroData = readGyro();
 		our_termperature_characteristic_update(&m_our_service, gyroData);
 	}
-	uint8_t readStatus2[1] = {0x0B};
-	uint8_t* readStatus2Address = &readStatus2[0];
-	uint8_t rxBuffer[2];
-	uint8_t* rxBufferAddress = &rxBuffer[0]; 
-	nrf_drv_gpiote_out_clear(CS_ADXL1_PIN);
-	nrf_drv_spi_transfer(&spi, readStatus2Address, 2, rxBufferAddress, 2);
-	while (!spi_xfer_done)
-    {
-        __WFE();
-    }
-	nrf_drv_gpiote_out_set(CS_ADXL1_PIN);
-	spi_xfer_done = false;	
-	//SEGGER_RTT_printf(0,"ADXL status 1 register = %d\n", rxBuffer[1]);
-	/*
-	readStatus2[0] = 0x0B;
-	nrf_drv_gpiote_out_clear(CS_ADXL1_PIN);
-	nrf_drv_spi_transfer(&spi, readStatus2Address, 2, rxBufferAddress, 2);
-	while (!spi_xfer_done)
-    {
-        __WFE();
-    }
-	nrf_drv_gpiote_out_set(CS_ADXL1_PIN);
-	spi_xfer_done = false;	
-	SEGGER_RTT_printf(0,"ADXL status 2 register = %d\n", rxBuffer[1]);*/
 }
 
 
@@ -378,7 +351,7 @@ static void sleep_mode_enter(void)
     APP_ERROR_CHECK(err_code);
 
     // Prepare wakeup buttons.
-    //err_code = bsp_btn_ble_sleep_mode_prepare();
+    err_code = bsp_btn_ble_sleep_mode_prepare();
     APP_ERROR_CHECK(err_code);
 
     // Go to system-off mode (this function will not return; wakeup will cause a reset).
@@ -450,7 +423,7 @@ static void ble_evt_dispatch(ble_evt_t * p_ble_evt)
 {
     dm_ble_evt_handler(p_ble_evt);
     ble_conn_params_on_ble_evt(p_ble_evt);
-    //bsp_btn_ble_on_ble_evt(p_ble_evt);
+    bsp_btn_ble_on_ble_evt(p_ble_evt);
     on_ble_evt(p_ble_evt);
     ble_advertising_on_ble_evt(p_ble_evt);
     // Call ble_our_service_on_ble_evt() to do housekeeping of ble connections related to our service and characteristic
@@ -642,7 +615,7 @@ static void buttons_leds_init(bool * p_erase_bonds)
                                  bsp_event_handler);
     APP_ERROR_CHECK(err_code);
 
-    //err_code = bsp_btn_ble_init(NULL, &startup_event);
+    err_code = bsp_btn_ble_init(NULL, &startup_event);
     APP_ERROR_CHECK(err_code);
 
     *p_erase_bonds = (startup_event == BSP_EVENT_CLEAR_BONDING_DATA);
@@ -660,52 +633,7 @@ static void power_manage(void)
 
 
 
-/**@brief Function for application main entry.
- */
-void spiInit(int cs, uint8_t* txbuffer, uint8_t* rxbuffer, uint8_t* txbuffread){
-	nrf_drv_gpiote_out_clear(cs);
-	nrf_drv_spi_transfer(&spi, txbuffer , 2, NULL, 0);
-	while (!spi_xfer_done)
-    {
-        __WFE();
-    }
-	nrf_drv_gpiote_out_set(cs);
-	spi_xfer_done = false;
-	
-	nrf_drv_gpiote_out_clear(cs);
-	nrf_drv_spi_transfer(&spi, txbuffread , 2, rxbuffer, 2);
-	while (!spi_xfer_done)
-    {
-        __WFE();
-    }
-	nrf_drv_gpiote_out_set(cs);
-	spi_xfer_done = false;	
-}
 
-void spiWrite(int cs, uint8_t ADXLregister, uint8_t dataToWrite){
-	uint8_t txBuffer[2] = {ADXLregister << 1, dataToWrite};
-	uint8_t* txAddress = &txBuffer[0];	
-	nrf_drv_gpiote_out_clear(cs);
-	nrf_drv_spi_transfer(&spi, txAddress , 2, NULL, 0);
-	while (!spi_xfer_done)
-    {
-        __WFE();
-    }
-	nrf_drv_gpiote_out_set(cs);
-	spi_xfer_done = false;
-}
-void spiRead(int cs, uint8_t txbuff, uint8_t* rxbuffer){
-	uint8_t txbuffer[2] = {txbuff << 1 | 0x01, 0x00};
-	uint8_t* txAddress = &txbuffer[0];
-	nrf_drv_gpiote_out_clear(cs);
-	nrf_drv_spi_transfer(&spi, txAddress , 2, rxbuffer, 2);
-	while (!spi_xfer_done)
-    {
-        __WFE();
-    }
-	nrf_drv_gpiote_out_set(cs);
-	spi_xfer_done = false;
-}
 
 void initializePin(nrf_drv_gpiote_out_config_t pinConfig, nrf_drv_gpiote_pin_t pin, bool pinStatus){
 	ret_code_t err_code;
@@ -719,24 +647,6 @@ void initializePin(nrf_drv_gpiote_out_config_t pinConfig, nrf_drv_gpiote_pin_t p
 	else{
 		nrf_drv_gpiote_out_clear(pin);
 	}
-}
-
-void accInterruptTriggered(){
-	nrf_drv_gpiote_out_clear(yellow_led); //blue on 
-	uint8_t readStatus2[1] = {0x0B};
-	uint8_t* readStatus2Address = &readStatus2[0];
-	uint8_t rxBuffer[2];
-	uint8_t* rxBufferAddress = &rxBuffer[0]; 
-	nrf_drv_gpiote_out_clear(CS_ADXL1_PIN);
-	nrf_drv_spi_transfer(&spi, readStatus2Address, 2, rxBufferAddress, 2);
-	while (!spi_xfer_done)
-    {
-        __WFE();
-    }
-	nrf_drv_gpiote_out_set(CS_ADXL1_PIN);
-	spi_xfer_done = false;	
-	//SEGGER_RTT_printf(0,"ADXL status 2 register = %d\n", rxBuffer[1]);
-	SEGGER_RTT_WriteString(0, "ADXL interrupt\n");
 }
 
 int main(void)
@@ -758,30 +668,37 @@ int main(void)
 	}
  
 	nrf_drv_gpiote_out_config_t outputGPIO = {
-		NRF_GPIOTE_POLARITY_LOTOHI,
+		NRF_GPIOTE_POLARITY_HITOLO,
 		NRF_GPIOTE_INITIAL_VALUE_HIGH,
 		false,
 	};
-	initializePin(outputGPIO,CS_ADXL2_PIN, true);
+	initializePin(outputGPIO,CS_ADXL2_PIN_EVAL, true);
 
-	initializePin(outputGPIO,CS_ADXL1_PIN, true);
+	initializePin(outputGPIO,CS_ADXL1_PIN_EVAL, true);
 
-	initializePin(outputGPIO,CS_FRAM,true);
+	initializePin(outputGPIO,CS_FRAM_EVAL,true);
 
 	initializePin(outputGPIO,main_bosch_address_pin,true);
 
-	initializePin(outputGPIO,green_led,true);
+	initializePin(outputGPIO,green_led,false);
 
-	initializePin(outputGPIO,red_led,false);
+	initializePin(outputGPIO,red_led,true);
 
 	initializePin(outputGPIO,yellow_led,true);
 
 	nrf_drv_gpiote_in_config_t interrupt = {
 		NRF_GPIOTE_POLARITY_LOTOHI,
-		NRF_GPIO_PIN_NOPULL,
+		NRF_GPIO_PIN_PULLDOWN,
 		true,
-		true
+		true,
 	};
+	
+	err_code = nrf_drv_gpiote_in_init(boschIntEval, &interrupt, int_fxn);
+	if(err_code != 0){
+		SEGGER_RTT_WriteString(0,"interrupt pin not initialized\n");
+	}
+	nrf_drv_gpiote_in_event_enable(boschIntEval, true);
+	
 	
 	/****************************
 	*
@@ -789,124 +706,20 @@ int main(void)
 	*
 	****************************/
     
-	APP_ERROR_CHECK(nrf_drv_spi_init(&spi, &spi_config, spi_event_handler));
-	//APP_ERROR_CHECK(nrf_drv_spi_init(&spi2, &spi_config2, spi_event_handler));
-	
-/*************************************************************************************************
+
+/***********************************************************************************
 *
-* ADXL initialize 
-*	meas mode
+*  Initialize i2c (twi)
+*		bosch bno055
 *
-**************************************************************************************************/
-	//init variables for spi init and reads
-	
-	uint8_t rxBuffer[2];
-	spiRead(CS_ADXL1_PIN, 0x00, &rxBuffer[0]);
-	SEGGER_RTT_printf(0, "dev id %d\n", rxBuffer[1]);
-	
-	uint8_t rxBuffer2[2];
-	spiRead(CS_ADXL2_PIN, 0x00, &rxBuffer2[0]);
-	SEGGER_RTT_printf(0, "ant dev id %d\n", rxBuffer2[1]);
-	
-	uint8_t threshold_act_x_h = 0x23;
-	spiWrite(CS_ADXL1_PIN, threshold_act_x_h, 0x03);
-	
-	uint8_t threshold_act_x_l = 0x24;
-	spiWrite(CS_ADXL1_PIN, threshold_act_x_l, 0x01);
-	
-	uint8_t threshold_act_y_h = 0x25;
-	spiWrite(CS_ADXL1_PIN, threshold_act_y_h, 0x03);
-	
-	uint8_t threshold_act_y_l = 0x26;
-	spiWrite(CS_ADXL1_PIN, threshold_act_y_l, 0x01);
-	
-	uint8_t threshold_act_z_h = 0x27;
-	spiWrite(CS_ADXL1_PIN, threshold_act_z_h, 0x03);
-	
-	uint8_t threshold_act_z_l = 0x28;
-	spiWrite(CS_ADXL1_PIN, threshold_act_z_l, 0x01);
+***********************************************************************************/
 
-	uint8_t time_act = 0x29;
-	spiWrite(CS_ADXL1_PIN, time_act, 0x01);
-	
-	/*uint8_t fifo_samples = 0x39;
-	spiWrite(CS_ADXL1_PIN, fifo_samples, 0xFF);*/
-	
-	/*uint8_t fifo_ctl = 0x3A;
-	spiWrite(CS_ADXL1_PIN, fifo_ctl, 0x3);*/
-	
-	uint8_t int1_map = 0x3B;
-	spiWrite(CS_ADXL1_PIN, int1_map, 0x20);
-
-	uint8_t int2_map = 0x3C;
-	spiWrite(CS_ADXL1_PIN, int2_map, 0x20);
-
-	uint8_t timing = 0x3D;
-	spiWrite(CS_ADXL1_PIN, timing, 0x60);
-
-	uint8_t measure = 0x3E;
-	spiWrite(CS_ADXL1_PIN, measure, 0x0B);
-	
-	uint8_t power_ctl = 0x3F;
-	spiWrite(CS_ADXL1_PIN, power_ctl, 0x17);
-	
-	err_code = nrf_drv_gpiote_in_init(ADXLint1, &interrupt, accInterruptTriggered);
-	if(err_code != 0){
-		SEGGER_RTT_WriteString(0,"interrupt pin not initialized\n");
+	bool i2cInitialized = init_i2c();
+	if (!i2cInitialized){
+		SEGGER_RTT_WriteString(0, "i2c not initialized");
 	}
-	nrf_drv_gpiote_in_event_enable(ADXLint1, true);	
-		
-	uint8_t FRAMtx[1] = {0x06};  								//write enable
-	uint8_t* addrFRAMtx = &FRAMtx[0];
-	nrf_drv_gpiote_out_clear(CS_FRAM);
-	nrf_drv_spi_transfer(&spi, addrFRAMtx,1, NULL,0);
-	while (!spi_xfer_done)
-    {
-       __WFE();
-    }
-	nrf_drv_gpiote_out_set(CS_FRAM);
-	spi_xfer_done = false;
-	
-	uint8_t FRAMtx2[2] = {0x01,0x42};
-	uint8_t* addrFRAMtx2 = &FRAMtx2[0];
-	nrf_drv_gpiote_out_clear(CS_FRAM);
-	nrf_drv_spi_transfer(&spi,addrFRAMtx2,2,NULL,0);
-	while (!spi_xfer_done)
-    {
-       __WFE();
-    }
-	nrf_drv_gpiote_out_set(CS_FRAM);
-	spi_xfer_done = false;
-	
-	nrf_drv_gpiote_out_clear(CS_FRAM);						 //write enable again
-	nrf_drv_spi_transfer(&spi, addrFRAMtx,1, NULL,0);
-	while (!spi_xfer_done)
-    {
-       __WFE();
-    }
-	nrf_drv_gpiote_out_set(CS_FRAM);
-	spi_xfer_done = false;
-	
-	uint8_t FRAMtx3[2] = {0x05,0x00};
-	uint8_t* addrFRAMtx3 = &FRAMtx3[0];
-	uint8_t FRAMrx3[2];
-	uint8_t* addrFRAMrx3 = &FRAMrx3[0];
-	nrf_drv_gpiote_out_clear(CS_FRAM);					 //read status register
-	nrf_drv_spi_transfer(&spi, addrFRAMtx3,1,addrFRAMrx3,2);
-	while (!spi_xfer_done)
-    {
-       __WFE();
-    }
-	nrf_drv_gpiote_out_set(CS_FRAM);
-	spi_xfer_done = false;
-	
-	if (FRAMrx3[1] == 66){
-		SEGGER_RTT_WriteString(0,"FRAM initialized\n");
-	}
-
-
-    
-	bool erase_bonds;
+	initBosch();
+    bool erase_bonds;
 
     // Initialize.
     timers_init();
